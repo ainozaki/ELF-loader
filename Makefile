@@ -23,7 +23,7 @@ format: $(SRC) $(HEADER) $(MAIN)
 	find ./ -type f -name "*.cc" -or -name "*.h" | xargs clang-format -i
 
 clean:
-	rm -f $(OBJ) $(TARGET)
+	rm -f $(OBJ) $(DEP) $(TARGET)
 
 .PHONY: all run format clean
 .SECONDARY: $(OBJ)
