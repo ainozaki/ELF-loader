@@ -3,20 +3,20 @@
 #include <charconv>
 #include <string>
 
-typedef struct {
+struct Elf64_Shdr {
   uint32_t sh_name;
   uint32_t sh_type;
   uint64_t sh_flags;
-  char *sh_addr;
-  char *sh_offset;
+  const char *sh_addr;
+  const char *sh_offset;
   uint64_t sh_size;
   uint32_t sh_link;
   uint32_t sh_info;
   uint64_t sh_addralign;
   uint64_t sh_entsize;
-} Elf64_Shdr;
+};
 
-std::string get_shtype(uint32_t type) {
+inline const char *get_shtype(uint32_t type) {
   switch (type) {
   case 0x0:
     return "NULL";

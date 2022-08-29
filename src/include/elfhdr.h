@@ -1,15 +1,15 @@
 #pragma once
 
-#define EI_NIDENT 16
+static const int EI_NIDENT = 16;
 
-typedef struct {
+struct Elf64_Ehdr {
   unsigned char e_ident[EI_NIDENT];
   uint16_t e_type;
   uint16_t e_machine;
   uint32_t e_version;
-  char *e_entry;
-  char *e_phoff;
-  char *e_shoff;
+  const char *e_entry;
+  const char *e_phoff;
+  const char *e_shoff;
   uint32_t e_flags;
   uint16_t e_ehsize;
   uint16_t e_phentsize;
@@ -17,4 +17,5 @@ typedef struct {
   uint16_t e_shentsize;
   uint16_t e_shnum;
   uint16_t e_shstrndx;
-} Elf64_Ehdr;
+  void print() const;
+};

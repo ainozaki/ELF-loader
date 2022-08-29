@@ -11,22 +11,22 @@
 #include "elfhdr.h"
 #include "sectionhdr.h"
 
-void parse_elfhdr(const Elf64_Ehdr *h) {
+void Elf64_Ehdr::print() const {
   printf("ELF header: \n");
-  printf("\tMagic                             : %s\n", h->e_ident);
-  printf("\tType                              : 0x%x\n", h->e_type);
-  printf("\tMachine                           : 0x%x\n", h->e_machine);
-  printf("\tVersion                           : 0x%x\n", h->e_version);
-  printf("\tEntry point address               : 0x%p\n", h->e_entry);
-  printf("\tStart of program headers          : 0x%p\n", h->e_phoff);
-  printf("\tStart of section headers          : 0x%p\n", h->e_shoff);
-  printf("\tFlags                             : 0x%x\n", h->e_flags);
-  printf("\tSize of this header               : %d (bytes)\n", h->e_ehsize);
-  printf("\tSize of program headers           : %d (bytes)\n", h->e_phentsize);
-  printf("\tNumber of program headers         : %d\n", h->e_phnum);
-  printf("\tSize of section headers           : %d (bytes)\n", h->e_shentsize);
-  printf("\tNumber of section headers         : %d\n", h->e_shnum);
-  printf("\tSection Header string table index : %d\n", h->e_shstrndx);
+  printf("\tMagic                             : %s\n", e_ident);
+  printf("\tType                              : 0x%x\n", e_type);
+  printf("\tMachine                           : 0x%x\n", e_machine);
+  printf("\tVersion                           : 0x%x\n", e_version);
+  printf("\tEntry point address               : 0x%p\n", e_entry);
+  printf("\tStart of program headers          : 0x%p\n", e_phoff);
+  printf("\tStart of section headers          : 0x%p\n", e_shoff);
+  printf("\tFlags                             : 0x%x\n", e_flags);
+  printf("\tSize of this header               : %d (bytes)\n", e_ehsize);
+  printf("\tSize of program headers           : %d (bytes)\n", e_phentsize);
+  printf("\tNumber of program headers         : %d\n", e_phnum);
+  printf("\tSize of section headers           : %d (bytes)\n", e_shentsize);
+  printf("\tNumber of section headers         : %d\n", e_shnum);
+  printf("\tSection Header string table index : %d\n", e_shstrndx);
 }
 
 Elf64_Shdr *read_sh(const char *file, const Elf64_Ehdr *eh,
@@ -59,23 +59,28 @@ int main(int argc, char **argv) {
   // ELF header
   Elf64_Ehdr *eh;
   eh = (Elf64_Ehdr *)file;
-  parse_elfhdr(eh);
+  eh->print();
 
   // Section header
   Elf64_Shdr *sh_tbl[eh->e_shnum];
   char *sh_name;
   printf("Sections: \n");
-  printf("\t[%2s] %-20s %-16s\n", "n", "Name", "Type");
-  printf("\t     %-20s %-16s\n", "Size", "EntSize");
+  printf("[%2s] %-19s %-16s %-16s   %-16s\n", "n", "Name", "Type", "Address",
+         "Offset");
+  printf("     %-16s    %-16s %-5s %-5s %-5s  %-16s\n", "Size", "EntSize",
+         "Flags", "Link", "Info", "Align");
 
   sh_tbl[eh->e_shstrndx] = read_sh(file, eh, eh->e_shstrndx);
   sh_name = read_section(file, sh_tbl[eh->e_shstrndx]);
 
   for (int i = 0; i < eh->e_shnum; i++) {
     sh_tbl[i] = read_sh(file, eh, i);
-    printf("\t[%2d] %-20s %-16s\n", i, sh_name + sh_tbl[i]->sh_name,
-           get_shtype(sh_tbl[i]->sh_type).c_str());
-    printf("\t     %020lx %016lx\n", sh_tbl[i]->sh_size, sh_tbl[i]->sh_entsize);
+    printf("[%2d] %-19s %-16s %016lx   %016lx\n", i,
+           sh_name + sh_tbl[i]->sh_name, get_shtype(sh_tbl[i]->sh_type),
+           (uint64_t)sh_tbl[i]->sh_addr, (uint64_t)sh_tbl[i]->sh_offset);
+    printf("     %016lx    %016lx %5d %5d %5d  %16ld\n", sh_tbl[i]->sh_size,
+           sh_tbl[i]->sh_entsize, sh_tbl[i]->sh_link, sh_tbl[i]->sh_link,
+           sh_tbl[i]->sh_info, sh_tbl[i]->sh_addralign);
   }
 
   close(fd);
