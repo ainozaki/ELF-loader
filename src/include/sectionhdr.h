@@ -3,17 +3,18 @@
 #include <charconv>
 #include <string>
 
-struct Elf64_Shdr {
-  uint32_t sh_name;
-  uint32_t sh_type;
-  uint64_t sh_flags;
-  const char *sh_addr;
-  const char *sh_offset;
-  uint64_t sh_size;
-  uint32_t sh_link;
-  uint32_t sh_info;
-  uint64_t sh_addralign;
-  uint64_t sh_entsize;
+struct Shdr {
+  uint32_t name;
+  uint32_t type;
+  uint64_t flags;
+  const char *addr;
+  const char *offset;
+  uint64_t size;
+  uint32_t link;
+  uint32_t info;
+  uint64_t addralign;
+  uint64_t entsize;
+  void print(int index, const char *sh_name) const;
 };
 
 inline const char *get_shtype(uint32_t type) {
