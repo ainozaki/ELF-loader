@@ -53,7 +53,7 @@ const char *get_shtype(uint32_t type) {
 
 void Shdr::print(int index, const char *sh_name) const {
   printf("[%2d] %-19s %-16s %016lx   %016lx\n", index, sh_name + name,
-         get_shtype(type), (uint64_t)addr, (uint64_t)offset);
+         get_shtype(type), addr, offset);
   printf("     %016lx    %016lx %5d %5d %5d  %16ld\n", size, entsize, link,
          link, info, addralign);
 }

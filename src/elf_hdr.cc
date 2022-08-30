@@ -8,9 +8,9 @@ void Ehdr::print() const {
   printf("\tType                              : 0x%x\n", type);
   printf("\tMachine                           : 0x%x\n", machine);
   printf("\tVersion                           : 0x%x\n", version);
-  printf("\tEntry point address               : 0x%p\n", entry);
-  printf("\tStart of program headers          : 0x%p\n", phoff);
-  printf("\tStart of section headers          : 0x%p\n", shoff);
+  printf("\tEntry point address               : 0x%lx\n", entry);
+  printf("\tStart of program headers          : 0x%lx\n", phoff);
+  printf("\tStart of section headers          : 0x%lx\n", shoff);
   printf("\tFlags                             : 0x%x\n", flags);
   printf("\tSize of this header               : %d (bytes)\n", ehsize);
   printf("\tSize of program headers           : %d (bytes)\n", phentsize);

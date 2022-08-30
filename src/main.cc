@@ -40,15 +40,14 @@ void Elf::parse() {
   printf("     %-16s    %-16s %-5s %-5s %-5s  %-16s\n", "Size", "EntSize",
          "Flags", "Link", "Info", "Align");
 
-  sh_tbl_ = (Shdr *)((uint64_t)file_ + (uint64_t)eh_->shoff);
-  sh_name_ =
-      (char *)((uint64_t)file_ + (uint64_t)sh_tbl_[eh_->shstrndx].offset);
+  sh_tbl_ = (Shdr *)((uint64_t)file_ + eh_->shoff);
+  sh_name_ = (char *)((uint64_t)file_ + sh_tbl_[eh_->shstrndx].offset);
   for (int i = 0; i < eh_->shnum; i++) {
     sh_tbl_[i].print(i, sh_name_);
   }
 
   // Program header
-  ph_tbl_ = (Phdr *)((uint64_t)file_ + (uint64_t)eh_->phoff);
+  ph_tbl_ = (Phdr *)((uint64_t)file_ + eh_->phoff);
   printf("Program Headers:\n");
   printf("\t%-16s %-16s %-16s %-16s\n", "Type", "Offset", "VirtAddr",
          "PhysAddr");

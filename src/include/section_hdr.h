@@ -8,8 +8,8 @@ public:
   uint32_t name;
   uint32_t type;
   uint64_t flags;
-  const char *addr;
-  const char *offset;
+  uint64_t addr;
+  uint64_t offset;
   uint64_t size;
   uint32_t link;
   uint32_t info;

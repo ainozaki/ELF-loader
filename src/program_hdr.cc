@@ -38,8 +38,8 @@ const char *get_phtype(uint32_t type) {
 } // namespace
 
 void Phdr::print() const {
-  printf("\t%-16s %016lx %016lx %016lx\n", get_phtype(type), offset,
-         (uint64_t)vaddr, (uint64_t)paddr);
+  printf("\t%-16s %016lx %016lx %016lx\n", get_phtype(type), offset, vaddr,
+         paddr);
   printf("\t%-16s %016lx %016lx %-6s %-6lx\n", " ", filesz, memsz, "Flags",
          align);
 }

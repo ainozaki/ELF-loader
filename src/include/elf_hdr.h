@@ -10,9 +10,9 @@ public:
   uint16_t type;
   uint16_t machine;
   uint32_t version;
-  const char *entry;
-  const char *phoff;
-  const char *shoff;
+  uint64_t entry;
+  uint64_t phoff;
+  uint64_t shoff;
   uint32_t flags;
   uint16_t ehsize;
   uint16_t phentsize;
