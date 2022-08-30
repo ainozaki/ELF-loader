@@ -2,9 +2,9 @@ CXXFLAGS=-g -Wall -Wextra -I./src/include -pthread -DNDEBUG -fsanitize=address
 LDFLAGS= -fsanitize=address
 SRC = \
 	src/main.cc \
-	src/elfhdr.cc \
-	src/programhdr.cc \
-	src/sectionhdr.cc
+	src/elf_hdr.cc \
+	src/program_hdr.cc \
+	src/section_hdr.cc
 
 OBJ=$(SRC:.cc=.o)
 DEP=$(SRC:.cc=.d)

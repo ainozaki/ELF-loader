@@ -9,9 +9,9 @@
 #include <unistd.h>
 
 #include "elf.h"
-#include "elfhdr.h"
-#include "programhdr.h"
-#include "sectionhdr.h"
+#include "elf_hdr.h"
+#include "program_hdr.h"
+#include "section_hdr.h"
 
 Elf::Elf(const char *filename) {
   fd_ = open(filename, O_RDONLY);

@@ -1,8 +1,8 @@
 #pragma once
 
-#include "elfhdr.h"
-#include "programhdr.h"
-#include "sectionhdr.h"
+#include "elf_hdr.h"
+#include "program_hdr.h"
+#include "section_hdr.h"
 
 class Elf {
 public:
