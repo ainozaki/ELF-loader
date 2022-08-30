@@ -1,8 +1,11 @@
 #pragma once
 
+#include <cstdint>
+
 static const int EI_NIDENT = 16;
 
-struct Ehdr {
+class Ehdr {
+public:
   unsigned char ident[EI_NIDENT];
   uint16_t type;
   uint16_t machine;
