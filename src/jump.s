@@ -8,7 +8,7 @@ jump_start:
     ldr	x1, [sp, #8]
     mov	x2, sp
     mov	sp, x0
-    blr	x1
+    br	x1
     nop
     add	sp, sp, #0x20
     ret

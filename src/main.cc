@@ -72,7 +72,7 @@ Elf::Elf(const char *filename) : filename_(filename) {
 
 Elf::~Elf() {
   close(fd_);
-  munmap(stack_, STACK_SIZE);
+  munmap(stack_top_, STACK_SIZE);
   munmap(file_start_, sb_.st_size);
 }
 
@@ -105,21 +105,19 @@ void Elf::elf_map(uint64_t &map_base, uint64_t &entry_addr) {
   for (int i = 0; i < eh_->phnum; i++) {
     ph = &ph_tbl_[i];
     // stack's flag
-    if (stack_ != NULL && ph->type == PT_GNU_STACK) {
+    if (stack_top_ != NULL && ph->type == PT_GNU_STACK) {
       if (ph->flags & PF_R)
         stack_prot = PROT_READ;
       if (ph->flags & PF_W)
         stack_prot |= PROT_WRITE;
       if (ph->flags & PF_X)
         stack_prot |= PROT_EXEC;
-      mprotect(stack_, STACK_SIZE, stack_prot);
+      mprotect(stack_top_, STACK_SIZE, stack_prot);
     }
 
     if (ph->type != PT_LOAD) {
       continue;
     }
-
-    entry_addr = eh_->entry;
 
     if (!map_base) {
       uint64_t map_total_size = get_map_total_size();
@@ -131,10 +129,11 @@ void Elf::elf_map(uint64_t &map_base, uint64_t &entry_addr) {
         perror("mmap");
         return;
       }
-      printf("\tmmap  : base:0x%lx, size:0x%lx\n", map_base, map_total_size);
+      printf("\tmmap  : range:0x%lx-0x%lx, size:0x%lx\n", map_base,
+             map_base + map_total_size, map_total_size);
     }
-    printf("\tmemcpy: dest:0x%lx, src:0x%lx, size:0x%lx\n",
-           map_base + ph->vaddr, (uint64_t)file_start_ + ph->offset, ph->memsz);
+    printf("\tmemcpy: range:0x%lx-0x%lx, size:0x%lx\n", map_base + ph->vaddr,
+           map_base + ph->vaddr + ph->memsz, ph->memsz);
     memcpy((void *)(map_base + ph->vaddr),
            (void *)((uint64_t)file_start_ + ph->offset), ph->memsz);
 
@@ -145,31 +144,36 @@ void Elf::elf_map(uint64_t &map_base, uint64_t &entry_addr) {
              map_base + ph->vaddr + ph->filesz, ph->memsz - ph->filesz);
     }
   }
+  entry_addr = map_base + eh_->entry;
   return;
 }
 
-void Elf::set_stack(const uint64_t elf_entry, const uint64_t interp_base) {
+void Elf::set_stack(const uint64_t elf_entry, const uint64_t interp_base,
+                    uint64_t &init_sp) {
   uint32_t index = 0;
   const char *argv[] = {"/home/ubuntu/ELF-loader/misc/a.out"};
   const char *envp[] = {"PWD=/home/ubuntu/ELF-loader"};
   uint8_t argc = 1;
   uint8_t envc = 1;
-  uint64_t *stack_ptr = (uint64_t *)stack_;
+  uint64_t *sp = (uint64_t *)stack_bottom_;
+  sp -= 32;
+  init_sp = (uint64_t)sp;
+  printf("sp=%p\n", sp);
   // argc
-  stack_ptr[index++] = argc;
+  sp[index++] = argc;
   // argv
   for (int i = 0; i < argc; i++) {
     printf("memcpy %s\n", argv[i]);
-    stack_ptr[index++] = (uint64_t)argv[i];
+    sp[index++] = (uint64_t)argv[i];
   }
-  stack_ptr[index++] = 0;
+  sp[index++] = 0;
   // envp
   for (int i = 0; i < envc; i++) {
-    stack_ptr[index++] = (uint64_t)envp[i];
+    sp[index++] = (uint64_t)envp[i];
   }
-  stack_ptr[index++] = 0;
+  sp[index++] = 0;
   // auxv
-  atentry *at = (atentry *)&stack_ptr[index];
+  atentry *at = (atentry *)&sp[index];
   index = 0;
   at[index].id = AT_PHDR;
   at[index++].value = (size_t)ph_tbl_;
@@ -198,9 +202,9 @@ void Elf::set_stack(const uint64_t elf_entry, const uint64_t interp_base) {
 
   for (int i = 0; i < argc + envc + 2 + 24; i++) {
     if ((i == 1) | (i == 3)) {
-      printf("stack[%d]: %s\n", i, (char *)stack_ptr[i]);
+      printf("stack[%d][%p]: %s\n", i, &sp[i], (char *)sp[i]);
     } else {
-      printf("stack[%d]: 0x%lx\n", i, stack_ptr[i]);
+      printf("stack[%d][%p]: 0x%lx\n", i, &sp[i], sp[i]);
     }
   }
 }
@@ -225,6 +229,7 @@ void Elf::load() {
   uint64_t interp_base = 0;
   uint64_t interp_entry = 0;
   const char *interp_str = get_interp();
+  uint64_t init_sp = 0;
 
   printf("loading %s...\n", filename_);
 
@@ -232,9 +237,10 @@ void Elf::load() {
   // TODO
 
   // calloc stack and zero clear
-  stack_ = (char *)mmap(0, STACK_SIZE, PROT_READ | PROT_WRITE,
-                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-
+  stack_top_ = (char *)mmap(0, STACK_SIZE, PROT_READ | PROT_WRITE,
+                            MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+  stack_bottom_ = stack_top_ + STACK_SIZE;
+  printf("stack: top:%p, bottom:%p\n", stack_top_, stack_bottom_);
   // map
   elf_map(elf_base, elf_entry);
 
@@ -246,15 +252,15 @@ void Elf::load() {
   }
 
   // argc, argv, envp, AUXV
-  set_stack(elf_base + elf_entry, interp_base);
+  set_stack(elf_base + elf_entry, interp_base, init_sp);
 
   if (interp_entry) {
-    printf("jump to interp_entry stack=%p, exit=%p, entry=0x%lx\n", stack_,
-           (void *)exit_func, interp_base + interp_entry);
-    jump_start(stack_, (void *)exit_func, (void *)(interp_base + interp_entry));
+    printf("jump to interp_entry stack=%p, exit=%p, entry=0x%lx\n",
+           (void *)init_sp, (void *)exit_func, interp_entry);
+    jump_start((void *)init_sp, (void *)exit_func, (void *)(interp_entry));
   } else {
-    printf("jump to elf_enter 0x%lx\n", elf_base + elf_entry);
-    jump_start(stack_, (void *)exit_func, (void *)(elf_base + elf_entry));
+    printf("jump to elf_enter 0x%lx\n", elf_entry);
+    jump_start((void *)init_sp, (void *)exit_func, (void *)(elf_entry));
   }
 }
 

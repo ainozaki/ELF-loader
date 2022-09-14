@@ -25,7 +25,8 @@ private:
   const char *get_interp() const;
   uint64_t get_map_total_size() const;
   void elf_map(uint64_t &map_base, uint64_t &entry_addr);
-  void set_stack(const uint64_t elf_entry, const uint64_t interp_base);
+  void set_stack(const uint64_t elf_entry, const uint64_t interp_base,
+                 uint64_t &init_sp);
 
   struct stat sb_;
   const char *filename_;
@@ -35,7 +36,8 @@ private:
   Shdr *sh_tbl_;
   Phdr *ph_tbl_;
 
-  char *stack_;
+  char *stack_top_;
+  char *stack_bottom_;
 
   int fd_; // for close
 };
