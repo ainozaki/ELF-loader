@@ -1,13 +1,14 @@
 CXXFLAGS=-g -Wall -Wextra -I./src/include -pthread -DNDEBUG -fsanitize=address
 LDFLAGS= -fsanitize=address
-SRC = \
-	src/main.cc \
-	src/elf_hdr.cc \
-	src/program_hdr.cc \
-	src/section_hdr.cc
-
-OBJ=$(SRC:.cc=.o)
-DEP=$(SRC:.cc=.d)
+#CXXFLAGS=-g -Wall -Wextra -I./src/include -pthread -DNDEBUG
+#LDFLAGS=
+OBJ = \
+	src/main.o \
+	src/elf_hdr.o \
+	src/program_hdr.o \
+	src/section_hdr.o \
+	src/jump.o
+DEP=$(OBJ:.o=.d)
 
 TARGET = elfloader
 
@@ -16,6 +17,9 @@ $(TARGET): $(OBJ)
 
 %.o: %.cc
 	$(CXX) $(CXXFLAGS) -c $< -o $@ -MMD -MP -MF $(@:.o=.d)
+
+%.o: %.s
+	$(CXX) $(CXXFLAGS) -c $< -o $@
 
 -include $(DEP)
 
