@@ -4,10 +4,8 @@ LDFLAGS= -fsanitize=address
 #LDFLAGS=
 OBJ = \
 	src/main.o \
-	src/elf_hdr.o \
-	src/program_hdr.o \
-	src/section_hdr.o \
-	src/jump.o
+	src/jump.o \
+	src/print.o
 DEP=$(OBJ:.o=.d)
 
 TARGET = elfloader

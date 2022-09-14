@@ -209,20 +209,6 @@ void Elf::set_stack(const uint64_t elf_entry, const uint64_t interp_base,
   }
 }
 
-/*
-void jump_start(void *init, void *exit_func, void *entry);
-{
-  register uint64_t sp __asm__("sp") = (uint64_t)init;
-  register uint64_t x0 __asm__("x0") = (uint64_t)exit_func;
-
-  __asm__ __volatile__(
-      "blr %0;\n"
-      :
-      : "r"(entry), "r"(sp), "r"(x0)
-      :);
-}
-*/
-
 void Elf::load() {
   uint64_t elf_base = 0;
   uint64_t elf_entry = 0;
