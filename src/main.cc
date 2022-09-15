@@ -68,6 +68,8 @@ Elf::Elf(const char *filename) : filename_(filename) {
       (char *)mmap(/*addr=*/0, sb_.st_size, PROT_READ, MAP_PRIVATE, fd_, 0);
   eh_ = (Ehdr *)file_start_;
   ph_tbl_ = (Phdr *)((uint64_t)file_start_ + eh_->phoff);
+  sh_tbl_ = (Shdr *)((uint64_t)file_start_ + eh_->shoff);
+  sh_name_ = (char *)((uint64_t)file_start_ + sh_tbl_[eh_->shstrndx].offset);
 }
 
 Elf::~Elf() {
@@ -80,6 +82,15 @@ const char *Elf::get_interp() const {
   for (int i = 0; i < eh_->phnum; i++) {
     if (ph_tbl_[i].type == PT_INTERP) {
       return file_start_ + ph_tbl_[i].offset;
+    }
+  }
+  return NULL;
+}
+
+Shdr *Elf::get_section(const char *sname) const {
+  for (int i = 0; i < eh_->shnum; i++) {
+    if (!strcmp(sname, (char *)((uint64_t)sh_name_ + sh_tbl_[i].name))) {
+      return &sh_tbl_[i];
     }
   }
   return NULL;
@@ -148,8 +159,8 @@ void Elf::elf_map(uint64_t &map_base, uint64_t &entry_addr) {
   return;
 }
 
-void Elf::set_stack(const uint64_t elf_entry, const uint64_t interp_base,
-                    uint64_t &init_sp) {
+void Elf::set_stack(const uint64_t elf_base, const uint64_t elf_entry,
+                    const uint64_t interp_base, uint64_t &init_sp) {
   uint32_t index = 0;
   const char *argv[] = {"/home/ubuntu/ELF-loader/misc/a.out"};
   const char *envp[] = {"PWD=/home/ubuntu/ELF-loader"};
@@ -172,6 +183,7 @@ void Elf::set_stack(const uint64_t elf_entry, const uint64_t interp_base,
     sp[index++] = (uint64_t)envp[i];
   }
   sp[index++] = 0;
+
   // auxv
   atentry *at = (atentry *)&sp[index];
   index = 0;
@@ -235,10 +247,36 @@ void Elf::load() {
     printf("interp: %s\n", interp_str);
     Elf interp(interp_str);
     interp.elf_map(interp_base, interp_entry);
+  } else {
+    printf("no dynamic loader\n");
   }
 
+  Shdr *init = get_section(".init");
+  Shdr *init_array = get_section(".init_array");
+  int (*fptr)();
+
+  if (init) {
+    printf("run init: offset:0x%lx, vaddr:0x%lx\n", init->addr,
+           elf_base + init->addr);
+    fptr = (int (*)())(elf_base + init->addr);
+    fptr();
+  }
+
+  if (init_array) {
+    for (uint64_t i = 0; i < init_array->size / sizeof(void *); i++) {
+      uint64_t *addr =
+          (uint64_t *)(elf_base + init_array->addr + sizeof(void *) * i);
+      if (addr) {
+        printf("run init_array offset:0x%lx, vaddr:0x%lx\n", *addr,
+               elf_base + *addr);
+        fptr = (int (*)())(elf_base + *addr);
+        fptr();
+      }
+    }
+  }
+  printf("finish run init_array\n");
   // argc, argv, envp, AUXV
-  set_stack(elf_base + elf_entry, interp_base, init_sp);
+  set_stack(elf_base, elf_base + elf_entry, interp_base, init_sp);
 
   if (interp_entry) {
     printf("jump to interp_entry stack=%p, exit=%p, entry=0x%lx\n",
@@ -261,8 +299,6 @@ void Elf::parse() {
   printf("     %-16s    %-16s %-5s %-5s %-5s  %-16s\n", "Size", "EntSize",
          "Flags", "Link", "Info", "Align");
 
-  sh_tbl_ = (Shdr *)((uint64_t)file_start_ + eh_->shoff);
-  sh_name_ = (char *)((uint64_t)file_start_ + sh_tbl_[eh_->shstrndx].offset);
   for (int i = 0; i < eh_->shnum; i++) {
     sh_tbl_[i].print(i, sh_name_);
   }
