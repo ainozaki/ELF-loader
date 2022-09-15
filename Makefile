@@ -1,7 +1,7 @@
-#CXXFLAGS=-g -Wall -Wextra -I./src/include -pthread -DNDEBUG -fsanitize=address
-#LDFLAGS= -fsanitize=address
-CXXFLAGS=-g -Wall -Wextra -I./src/include -pthread -DNDEBUG
-LDFLAGS=
+CXXFLAGS=-g -Wall -Wextra -I./src/include -pthread -DNDEBUG -fsanitize=address
+LDFLAGS= -fsanitize=address
+#CXXFLAGS=-g -Wall -Wextra -I./src/include -pthread -DNDEBUG
+#LDFLAGS=
 OBJ = \
 	src/main.o \
 	src/jump.o \

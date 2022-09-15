@@ -9,16 +9,14 @@
 const uint64_t STACK_SIZE = 1 * 1024 * 1024;
 const uint64_t PAGE_SIZE = sysconf(_SC_PAGESIZE);
 
-struct atentry
-{
+struct atentry {
   size_t id;
   size_t value;
 };
 
-class Elf
-{
+class Elf {
 public:
-  Elf(const char *filename);
+  Elf(int argc, char *argv[], int envc, char *envp[]);
   ~Elf();
   void parse();
   void load();
@@ -27,8 +25,8 @@ private:
   const char *get_interp() const;
   uint64_t get_map_total_size() const;
   void elf_map(uint64_t &map_base, uint64_t &entry_addr);
-  void set_stack(const uint64_t elf_entry,
-                 const uint64_t interp_base, uint64_t &init_sp);
+  void set_stack(const uint64_t elf_entry, const uint64_t interp_base,
+                 uint64_t &init_sp);
   Shdr *get_section(const char *name) const;
 
   struct stat sb_;
@@ -41,6 +39,11 @@ private:
 
   char *stack_top_;
   char *stack_bottom_;
+
+  int argc_;
+  char **argv_;
+  int envc_;
+  char **envp_;
 
   int fd_; // for close
 };
