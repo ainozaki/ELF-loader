@@ -39,34 +39,37 @@ const uint64_t AT_EXECFN = 31;
 
 const uint64_t MAP_FAILED_UINT = (uint64_t)-1;
 
+uint64_t PAGE_ROUNDDOWN(uint64_t v) { return v & ~(PAGE_SIZE - 1); }
+
 /*
   uint64_t PAGE_OFFSET(uint64_t v) { return v & (PAGE_SIZE - 1); }
 
-  uint64_t PAGE_ROUNDDOWN(uint64_t v) { return v & ~(PAGE_SIZE - 1); }
-
-  uint64_t PAGE_ROUNDUP(uint64_t v)
-  {
-    return (v + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
-  }
 */
+
+uint64_t PAGE_ROUNDUP(uint64_t v) {
+  return (v + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+}
 
 void exit_func(int code) { exit(code); }
 
 } // namespace
 
-extern "C" void jump_start(void *init, void *exit_func, void *entry);
+extern "C" void jump_start(void *sp, void *exit, void *entry);
 
 Elf::Elf(int argc, char *argv[], int envc, char *envp[])
     : filename_(argv[1]), argc_(argc), argv_(argv), envc_(envc), envp_(envp) {
   printf("PAGE_SIZE: 0x%lx\n", PAGE_SIZE);
-  fd_ = open(filename_, O_RDONLY);
+  fd_ = open(filename_, O_RDWR);
   if (!fd_) {
     fprintf(stderr, "Cannot open %s\n", filename_);
     return;
   }
   fstat(fd_, &sb_);
-  file_start_ =
-      (char *)mmap(/*addr=*/0, sb_.st_size, PROT_READ, MAP_PRIVATE, fd_, 0);
+  if ((file_start_ = (char *)mmap(NULL, sb_.st_size, PROT_READ | PROT_WRITE,
+                                  MAP_SHARED, fd_, 0)) == (char *)-1) {
+    perror("mmap");
+    exit(1);
+  }
   eh_ = (Ehdr *)file_start_;
   ph_tbl_ = (Phdr *)((uint64_t)file_start_ + eh_->phoff);
   sh_tbl_ = (Shdr *)((uint64_t)file_start_ + eh_->shoff);
@@ -108,11 +111,31 @@ uint64_t Elf::get_map_total_size() const {
   }
   return max_addr - min_addr;
 }
+uint64_t Elf::get_map_max_addr() const {
+  uint64_t max_addr = 0;
+  for (int i = 0; i < eh_->phnum; i++) {
+    if (ph_tbl_[i].type == PT_LOAD) {
+      max_addr = std::max(ph_tbl_[i].vaddr + ph_tbl_[i].memsz, max_addr);
+    }
+  }
+  return max_addr;
+}
 
-void Elf::elf_map(uint64_t &map_base, uint64_t &entry_addr) {
+uint64_t Elf::get_map_min_addr() const {
+  uint64_t min_addr = (uint64_t)-1;
+  for (int i = 0; i < eh_->phnum; i++) {
+    if (ph_tbl_[i].type == PT_LOAD) {
+      min_addr = std::min(ph_tbl_[i].vaddr, min_addr);
+    }
+  }
+  return min_addr;
+}
+
+void Elf::elf_map(uint64_t &entry_addr) {
   printf("elf_map: file_start_:%p\n", file_start_);
   int stack_prot;
   Phdr *ph;
+  bool map_done = false;
 
   for (int i = 0; i < eh_->phnum; i++) {
     ph = &ph_tbl_[i];
@@ -131,32 +154,37 @@ void Elf::elf_map(uint64_t &map_base, uint64_t &entry_addr) {
       continue;
     }
 
-    if (!map_base) {
-      uint64_t map_total_size = get_map_total_size();
-      printf("\tmap_total_size: 0x%lx\n", map_total_size);
-      if ((map_base = (uint64_t)mmap(/*addr=*/NULL, map_total_size,
-                                     PROT_READ | PROT_EXEC | PROT_WRITE,
-                                     MAP_ANONYMOUS | MAP_PRIVATE, 0, 0)) ==
+    if (!map_done) {
+      uint64_t map_min_addr = get_map_min_addr();
+      uint64_t map_max_addr = get_map_max_addr();
+      uint64_t map_start = PAGE_ROUNDDOWN(map_min_addr);
+      uint64_t map_size = PAGE_ROUNDUP(map_max_addr - map_start);
+      uint64_t map_result;
+      printf("\tmap: min=0x%lx, max=0x%lx, start=0x%lx, size=0x%lx\n",
+             map_min_addr, map_max_addr, map_start, map_size);
+      if ((map_result = (uint64_t)mmap((void *)map_min_addr, map_size,
+                                       PROT_READ | PROT_EXEC | PROT_WRITE,
+                                       MAP_SHARED | MAP_ANONYMOUS, 0, 0)) ==
           MAP_FAILED_UINT) {
         perror("mmap");
-        return;
+        exit(1);
       }
-      printf("\tmmap  : range:0x%lx-0x%lx, size:0x%lx\n", map_base,
-             map_base + map_total_size, map_total_size);
+      printf("\tmap_returned: 0x%lx\n", map_result);
+      map_done = true;
     }
-    printf("\tmemcpy: range:0x%lx-0x%lx, size:0x%lx\n", map_base + ph->vaddr,
-           map_base + ph->vaddr + ph->memsz, ph->memsz);
-    memcpy((void *)(map_base + ph->vaddr),
-           (void *)((uint64_t)file_start_ + ph->offset), ph->memsz);
+
+    printf("\tmemcpy: range:0x%lx-0x%lx, size:0x%lx\n", ph->vaddr,
+           ph->vaddr + ph->memsz, ph->memsz);
+    memcpy((void *)(ph->vaddr), (void *)((uint64_t)file_start_ + ph->offset),
+           ph->memsz);
 
     if (ph->memsz > ph->filesz) {
-      memset((void *)(map_base + ph->vaddr + ph->filesz), 0,
-             ph->memsz - ph->filesz);
+      memset((void *)(ph->vaddr + ph->filesz), 0, ph->memsz - ph->filesz);
       printf("\tzero clear .bss: from:0x%lx, size:0x%lx\n",
-             map_base + ph->vaddr + ph->filesz, ph->memsz - ph->filesz);
+             ph->vaddr + ph->filesz, ph->memsz - ph->filesz);
     }
   }
-  entry_addr = map_base + eh_->entry;
+  entry_addr = eh_->entry;
   return;
 }
 
@@ -170,10 +198,10 @@ void Elf::set_stack(const uint64_t elf_entry, const uint64_t interp_base,
   printf("sp=%p\n", sp);
 
   // argc
-  sp[index++] = argc_;
+  sp[index++] = argc_ - 1;
 
   // argv
-  for (int i = 0; i < argc_; i++) {
+  for (int i = 1; i < argc_; i++) {
     sp[index++] = (uint64_t)argv_[i];
   }
   sp[index++] = 0;
@@ -218,7 +246,6 @@ void Elf::set_stack(const uint64_t elf_entry, const uint64_t interp_base,
 }
 
 void Elf::load() {
-  uint64_t elf_base = 0;
   uint64_t elf_entry = 0;
   uint64_t interp_base = 0;
   uint64_t interp_entry = 0;
@@ -230,6 +257,12 @@ void Elf::load() {
   // check ELF file format
   // TODO
 
+  // change flag for enable writing program
+  printf("changing flag...\n");
+  for (int i = 0; i < eh_->phnum; i++) {
+    ph_tbl_[i].flags = PF_R | PF_W | PF_X;
+  }
+
   // calloc stack and zero clear
   if ((stack_top_ = (char *)mmap(0, STACK_SIZE, PROT_READ | PROT_WRITE,
                                  MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)) ==
@@ -239,27 +272,28 @@ void Elf::load() {
   }
   stack_bottom_ = stack_top_ + STACK_SIZE;
   printf("stack: top:%p, bottom:%p\n", stack_top_, stack_bottom_);
+
   // map
-  elf_map(elf_base, elf_entry);
+  elf_map(elf_entry);
 
   // interp
   if (interp_str) {
     printf("interp: %s\n", interp_str);
     Elf interp(argc_, argv_, envc_, envp_);
-    interp.elf_map(interp_base, interp_entry);
+    interp.elf_map(interp_entry);
   } else {
     printf("no dynamic loader\n");
   }
 
   // argc, argv, envp, AUXV
-  set_stack(elf_base + elf_entry, interp_base, init_sp);
-
+  set_stack(elf_entry, interp_base, init_sp);
   if (interp_entry) {
     printf("jump to interp_entry stack=%p, exit=%p, entry=0x%lx\n",
            (void *)init_sp, (void *)exit_func, interp_entry);
     jump_start((void *)init_sp, (void *)exit_func, (void *)(interp_entry));
   } else {
-    printf("jump to elf_enter 0x%lx\n", elf_entry);
+    printf("jump to elf_enter %p, init_sp=%p\n", (void *)elf_entry,
+           (void *)init_sp);
     jump_start((void *)init_sp, (void *)exit_func, (void *)(elf_entry));
   }
 }
@@ -295,12 +329,13 @@ int main(int argc, char *argv[], char *envp[]) {
     fprintf(stderr, "usage: %s <filename>\n", argv[0]);
     return 1;
   }
-
+  printf("file = %s\n", argv[1]);
   int envc = 0;
   while (envp[envc]) {
     envc++;
     continue;
   }
+
   Elf elf(argc, argv, envc, envp);
   //  elf.parse();
   elf.load();
