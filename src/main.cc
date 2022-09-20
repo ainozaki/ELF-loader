@@ -50,14 +50,11 @@ uint64_t PAGE_ROUNDUP(uint64_t v) {
   return (v + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 }
 
-void exit_func(int code) { exit(code); }
-
 } // namespace
 
-extern "C" void jump_start(void *sp, void *exit, void *entry);
+extern "C" void jump_start(uint64_t entry, void *sp);
 
-Elf::Elf(int argc, char *argv[], int envc, char *envp[])
-    : filename_(argv[1]), argc_(argc), argv_(argv), envc_(envc), envp_(envp) {
+Elf::Elf(char *filename) : filename_(filename) {
   printf("PAGE_SIZE: 0x%lx\n", PAGE_SIZE);
   fd_ = open(filename_, O_RDWR);
   if (!fd_) {
@@ -78,7 +75,6 @@ Elf::Elf(int argc, char *argv[], int envc, char *envp[])
 
 Elf::~Elf() {
   close(fd_);
-  munmap(stack_top_, STACK_SIZE);
   munmap(file_start_, sb_.st_size);
 }
 
@@ -131,24 +127,13 @@ uint64_t Elf::get_map_min_addr() const {
   return min_addr;
 }
 
-void Elf::elf_map(uint64_t &entry_addr) {
+void Elf::elf_map() {
   printf("elf_map: file_start_:%p\n", file_start_);
-  int stack_prot;
   Phdr *ph;
   bool map_done = false;
 
   for (int i = 0; i < eh_->phnum; i++) {
     ph = &ph_tbl_[i];
-    // stack's flag
-    if (stack_top_ != NULL && ph->type == PT_GNU_STACK) {
-      if (ph->flags & PF_R)
-        stack_prot = PROT_READ;
-      if (ph->flags & PF_W)
-        stack_prot |= PROT_WRITE;
-      if (ph->flags & PF_X)
-        stack_prot |= PROT_EXEC;
-      mprotect(stack_top_, STACK_SIZE, stack_prot);
-    }
 
     if (ph->type != PT_LOAD) {
       continue;
@@ -184,73 +169,12 @@ void Elf::elf_map(uint64_t &entry_addr) {
              ph->vaddr + ph->filesz, ph->memsz - ph->filesz);
     }
   }
-  entry_addr = eh_->entry;
+  entry_ = eh_->entry;
   return;
 }
 
-void Elf::set_stack(const uint64_t elf_entry, const uint64_t interp_base,
-                    uint64_t &init_sp) {
-  uint32_t index = 0;
-  uint64_t *sp = (uint64_t *)stack_bottom_;
-  /// sp -= argc_ + envc_ + 2 + 24;
-  sp -= 128;
-  init_sp = (uint64_t)sp;
-  printf("sp=%p\n", sp);
-
-  // argc
-  sp[index++] = argc_ - 1;
-
-  // argv
-  for (int i = 1; i < argc_; i++) {
-    sp[index++] = (uint64_t)argv_[i];
-  }
-  sp[index++] = 0;
-
-  // envp
-  for (int i = 0; i < envc_; i++) {
-    sp[index++] = (uint64_t)envp_[i];
-  }
-  sp[index++] = 0;
-
-  // auxv
-  atentry *at = (atentry *)&sp[index];
-  index = 0;
-  at[index].id = AT_PHDR;
-  at[index++].value = (size_t)ph_tbl_;
-  at[index].id = AT_PHENT;
-  at[index++].value = eh_->phentsize;
-  at[index].id = AT_PHNUM;
-  at[index++].value = eh_->phnum;
-  at[index].id = AT_PAGESZ;
-  at[index++].value = PAGE_SIZE;
-  at[index].id = AT_BASE;
-  at[index++].value = interp_base;
-  at[index].id = AT_FLAGS;
-  at[index++].value = 0;
-  at[index].id = AT_ENTRY;
-  at[index++].value = elf_entry;
-  at[index].id = AT_UID;
-  at[index++].value = getuid();
-  at[index].id = AT_GID;
-  at[index++].value = getgid();
-  at[index].id = AT_EGID;
-  at[index++].value = getegid();
-  at[index].id = AT_RANDOM;
-  at[index++].value = 12345;
-  at[index].id = AT_NULL;
-  at[index++].value = 0;
-
-  for (int i = 0; i < argc_ + envc_ + 2 + 24; i += 2) {
-    printf("[%p]: 0x%016lx 0x%016lx\n", &sp[i], sp[i], sp[i + 1]);
-  }
-}
-
 void Elf::load() {
-  uint64_t elf_entry = 0;
-  uint64_t interp_base = 0;
-  uint64_t interp_entry = 0;
   const char *interp_str = get_interp();
-  uint64_t init_sp = 0;
 
   printf("loading %s...\n", filename_);
 
@@ -263,39 +187,37 @@ void Elf::load() {
     ph_tbl_[i].flags = PF_R | PF_W | PF_X;
   }
 
-  // calloc stack and zero clear
-  if ((stack_top_ = (char *)mmap(0, STACK_SIZE, PROT_READ | PROT_WRITE,
-                                 MAP_PRIVATE | MAP_ANONYMOUS, -1, 0)) ==
-      (char *)-1) {
-    perror("mmap");
-    return;
-  }
-  stack_bottom_ = stack_top_ + STACK_SIZE;
-  printf("stack: top:%p, bottom:%p\n", stack_top_, stack_bottom_);
-
   // map
-  elf_map(elf_entry);
+  elf_map();
 
   // interp
   if (interp_str) {
-    printf("interp: %s\n", interp_str);
-    Elf interp(argc_, argv_, envc_, envp_);
-    interp.elf_map(interp_entry);
+    printf("Found .interp %s. Cannot deal dynamic linked executable.\n",
+           interp_str);
+    return;
   } else {
     printf("no dynamic loader\n");
   }
 
-  // argc, argv, envp, AUXV
-  set_stack(elf_entry, interp_base, init_sp);
-  if (interp_entry) {
-    printf("jump to interp_entry stack=%p, exit=%p, entry=0x%lx\n",
-           (void *)init_sp, (void *)exit_func, interp_entry);
-    jump_start((void *)init_sp, (void *)exit_func, (void *)(interp_entry));
-  } else {
-    printf("jump to elf_enter %p, init_sp=%p\n", (void *)elf_entry,
-           (void *)init_sp);
-    jump_start((void *)init_sp, (void *)exit_func, (void *)(elf_entry));
+  Shdr *init = get_section(".init");
+  Shdr *init_array = get_section(".init_array");
+  if (init) {
+    printf("exec .init\n");
+    printf("\t.init     : addr=0x%lx\n", init->addr);
+    entry_t *entry = (entry_t *)(init->addr);
+    (entry)();
   }
+  if (init_array) {
+    printf("exec .init_array\n");
+    for (uint64_t i = 0; i < init_array->size / sizeof(void *); i++) {
+      entry_t *entry =
+          (entry_t *)*(uint64_t *)(init_array->addr + sizeof(void *) * i);
+      printf("\t.initarray[%ld] : addr=0x%p\n", i, (void *)entry);
+      (entry)();
+    }
+  }
+
+  load_done_ = true;
 }
 
 void Elf::parse() {
@@ -324,19 +246,22 @@ void Elf::parse() {
   }
 }
 
-int main(int argc, char *argv[], char *envp[]) {
+int main(int argc, char **argv, char **envp) {
   if (argc < 2) {
     fprintf(stderr, "usage: %s <filename>\n", argv[0]);
     return 1;
   }
   printf("file = %s\n", argv[1]);
-  int envc = 0;
-  while (envp[envc]) {
-    envc++;
-    continue;
-  }
 
-  Elf elf(argc, argv, envc, envp);
-  //  elf.parse();
+  Elf elf(argv[1]);
   elf.load();
+
+  if (elf.is_load_done()) {
+    printf("entry: 0x%lx\n", elf.get_entry());
+    entry_ptr entry = (entry_ptr)elf.get_entry();
+    return entry(argc, argv, envp);
+  } else {
+    printf("something wrong with loading elf.\n");
+    return 1;
+  }
 }

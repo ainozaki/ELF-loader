@@ -1,7 +1,7 @@
 CXXFLAGS=-g -Wall -static -Wextra -I./src/include -pthread -DNDEBUG -fsanitize=address
 LDFLAGS= -fsanitize=address -T ./linker_script_loader.x
 #CXXFLAGS=-g -Wall -Wextra -I./src/include -pthread -DNDEBUG
-#LDFLAGS=
+#LDFLAGS= -T ./linker_script_loader.x
 OBJ = \
 	src/main.o \
 	src/jump.o \

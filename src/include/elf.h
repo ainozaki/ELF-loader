@@ -14,21 +14,27 @@ struct atentry {
   size_t value;
 };
 
+typedef void(entry_t)(void);
+typedef int (*entry_ptr)(int, char **, char **);
+
 class Elf {
 public:
-  Elf(int argc, char *argv[], int envc, char *envp[]);
+  Elf(char *filename);
   ~Elf();
   void parse();
   void load();
+
+  uint64_t get_entry() { return entry_; }
+  bool is_load_done() { return load_done_; }
 
 private:
   const char *get_interp() const;
   uint64_t get_map_total_size() const;
   uint64_t get_map_max_addr() const;
   uint64_t get_map_min_addr() const;
-  void elf_map(uint64_t &entry_addr);
-  void set_stack(const uint64_t elf_entry, const uint64_t interp_base,
-                 uint64_t &init_sp);
+  void elf_map();
+  // void set_stack(const uint64_t elf_entry, const uint64_t interp_base,
+  //                uint64_t &init_sp);
   Shdr *get_section(const char *name) const;
 
   struct stat sb_;
@@ -39,13 +45,9 @@ private:
   Shdr *sh_tbl_;
   Phdr *ph_tbl_;
 
-  char *stack_top_;
-  char *stack_bottom_;
+  uint64_t entry_;
 
-  int argc_;
-  char **argv_;
-  int envc_;
-  char **envp_;
+  bool load_done_ = false;
 
   int fd_; // for close
 };
