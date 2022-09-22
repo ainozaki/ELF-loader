@@ -6,15 +6,15 @@
 
 #include <unistd.h>
 
+namespace elf {
+
 const uint64_t STACK_SIZE = 1 * 1024 * 1024;
-const uint64_t PAGE_SIZE = sysconf(_SC_PAGESIZE);
 
 struct atentry {
   size_t id;
   size_t value;
 };
 
-typedef void(entry_t)(void);
 typedef int (*entry_ptr)(int, char **, char **);
 
 class Elf {
@@ -22,10 +22,11 @@ public:
   Elf(char *filename);
   ~Elf();
   void parse();
-  void load();
+  void load(int argc, char **argv);
 
   uint64_t get_entry() { return entry_; }
   bool is_load_done() { return load_done_; }
+  uint64_t init_;
 
 private:
   const char *get_interp() const;
@@ -51,3 +52,5 @@ private:
 
   int fd_; // for close
 };
+
+} // namespace elf

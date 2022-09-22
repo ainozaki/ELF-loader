@@ -14,6 +14,7 @@
 #include "include/section_hdr.h"
 
 namespace {
+const uint64_t PAGE_SIZE = sysconf(_SC_PAGESIZE);
 const uint64_t AT_NULL = 0;
 const uint64_t AT_IGNORE = 1;
 const uint64_t AT_EXECFD = 2;
@@ -50,11 +51,16 @@ uint64_t PAGE_ROUNDUP(uint64_t v) {
   return (v + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
 }
 
+extern "C" void jump_start(void *exit, uint64_t entry, uint64_t sp);
+
+extern "C" void exit_func(int code) { exit(code); }
+
 } // namespace
 
-extern "C" void jump_start(uint64_t entry, void *sp);
+namespace elf {
 
 Elf::Elf(char *filename) : filename_(filename) {
+  printf("Loading %s\n", filename_);
   printf("PAGE_SIZE: 0x%lx\n", PAGE_SIZE);
   fd_ = open(filename_, O_RDWR);
   if (!fd_) {
@@ -65,7 +71,7 @@ Elf::Elf(char *filename) : filename_(filename) {
   if ((file_start_ = (char *)mmap(NULL, sb_.st_size, PROT_READ | PROT_WRITE,
                                   MAP_SHARED, fd_, 0)) == (char *)-1) {
     perror("mmap");
-    exit(1);
+    return;
   }
   eh_ = (Ehdr *)file_start_;
   ph_tbl_ = (Phdr *)((uint64_t)file_start_ + eh_->phoff);
@@ -173,10 +179,8 @@ void Elf::elf_map() {
   return;
 }
 
-void Elf::load() {
+void Elf::load(int argc, char **argv) {
   const char *interp_str = get_interp();
-
-  printf("loading %s...\n", filename_);
 
   // check ELF file format
   // TODO
@@ -199,22 +203,41 @@ void Elf::load() {
     printf("no dynamic loader\n");
   }
 
-  Shdr *init = get_section(".init");
-  Shdr *init_array = get_section(".init_array");
-  if (init) {
-    printf("exec .init\n");
-    printf("\t.init     : addr=0x%lx\n", init->addr);
-    entry_t *entry = (entry_t *)(init->addr);
-    (entry)();
+  // stack
+  // argv
+  memcpy(&argv[0], &argv[1], sizeof(char *));
+  uint64_t *st = (uint64_t *)&argv[0];
+  st += argc;
+  assert(!(*st));
+  st++;
+  // envp
+  while (*(st++)) {
+    continue;
   }
-  if (init_array) {
-    printf("exec .init_array\n");
-    for (uint64_t i = 0; i < init_array->size / sizeof(void *); i++) {
-      entry_t *entry =
-          (entry_t *)*(uint64_t *)(init_array->addr + sizeof(void *) * i);
-      printf("\t.initarray[%ld] : addr=0x%p\n", i, (void *)entry);
-      (entry)();
+  // auxv
+  while (*st) {
+    uint64_t *type = st++;
+    uint64_t *value = st++;
+    switch (*type) {
+    case AT_BASE:
+      *value = 0;
+      break;
+    case AT_EXECFD:
+      *value = fd_;
+      break;
+    case AT_PHDR:
+      *value = ph_tbl_[0].vaddr + eh_->phoff;
+      break;
+    case AT_PHNUM:
+      *value = eh_->phnum;
+      break;
+    case AT_PHENT:
+      *value = eh_->phentsize;
+      break;
+    case AT_ENTRY:
+      *value = entry_;
     }
+    printf("auxv: type[0x%2lx]=0x%8lx\n", *type, *value);
   }
 
   load_done_ = true;
@@ -246,22 +269,26 @@ void Elf::parse() {
   }
 }
 
-int main(int argc, char **argv, char **envp) {
+} // namespace elf
+
+int main(int argc, char **argv) {
   if (argc < 2) {
     fprintf(stderr, "usage: %s <filename>\n", argv[0]);
     return 1;
   }
-  printf("file = %s\n", argv[1]);
 
-  Elf elf(argv[1]);
-  elf.load();
+  elf::Elf elf(argv[1]);
+  elf.load(argc, argv);
 
   if (elf.is_load_done()) {
-    printf("entry: 0x%lx\n", elf.get_entry());
-    entry_ptr entry = (entry_ptr)elf.get_entry();
-    return entry(argc, argv, envp);
+    uint64_t entry = elf.get_entry();
+    uint64_t sp = (uint64_t)&argv[0];
+    sp -= 8;
+    printf("entry: 0x%lx, sp: 0x%lx\n", entry, sp);
+    jump_start((void *)exit_func, entry, sp);
   } else {
     printf("something wrong with loading elf.\n");
     return 1;
   }
+  return 0;
 }

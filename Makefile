@@ -1,7 +1,7 @@
-CXXFLAGS=-g -Wall -static -Wextra -I./src/include -pthread -DNDEBUG -fsanitize=address
-LDFLAGS= -fsanitize=address -T ./linker_script_loader.x
-#CXXFLAGS=-g -Wall -Wextra -I./src/include -pthread -DNDEBUG
-#LDFLAGS= -T ./linker_script_loader.x
+##CXXFLAGS=-g -Wall -static -Wextra -I./src/include -pthread -DNDEBUG -fsanitize=address
+##LDFLAGS= -fsanitize=address -T ./linker_script_loader.x
+CXXFLAGS=-g -Wall -static -Wextra -I./src/include -pthread -DNDEBUG
+LDFLAGS=-g -T ./linker_script_loader.x
 OBJ = \
 	src/main.o \
 	src/jump.o \
@@ -22,7 +22,7 @@ $(TARGET): $(OBJ)
 -include $(DEP)
 
 run:
-	./$(TARGET) misc/a.out
+	./$(TARGET) ./misc/a.out
 
 format: $(SRC) $(HEADER) $(MAIN)
 	find ./ -type f -name "*.cc" -or -name "*.h" | xargs clang-format -i
